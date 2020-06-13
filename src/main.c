@@ -15,6 +15,26 @@ bool verbose;
 long stepcount;
 double deltatime;
 
+void update_positions(double* positions, double* velocities, double* accelerations, int n, double deltatime)
+{
+    for (int i = 0; i < n; ++i)
+    {
+        positions[i] += velocities[i] * deltatime + 0.5 * deltatime * deltatime * accelerations[i];
+    }
+}
+
+void update_velocities(double* velocities, double* old_accelerations, double* new_accelerations, int n, double deltatime)
+{
+    for (int i = 0; i < n; ++i)
+    {
+        velocities[i] += 0.5 * (old_accelerations[i] + new_accelerations[i]) * deltatime;
+    }
+}
+
+void compute_accelerations(double* accelerations)
+{
+}
+
 int main(int argc, char * argv[])
 {
     if (argc < 5 || argc > 6)
@@ -44,6 +64,7 @@ int main(int argc, char * argv[])
     double* positions = NULL;
     double* velocities = NULL;
     double* accelerations = NULL;
+    double* new_accelerations = NULL;
     int n;
     if (rank == 0)
     {
@@ -99,11 +120,23 @@ int main(int argc, char * argv[])
     check_mem(velocities);
     accelerations = malloc(sizeof(double) * sendcounts[rank]);
     check_mem(accelerations);
+    new_accelerations = malloc(sizeof(double) * sendcounts[rank]);
+    check_mem(new_accelerations);
     MPI_Scatterv(positions0, sendcounts, displs, MPI_DOUBLE,
             positions, sendcounts[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
     MPI_Scatterv(velocities0, sendcounts, displs, MPI_DOUBLE,
             velocities, sendcounts[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
+    compute_accelerations(accelerations);
+    for (int step = 1; step <= stepcount; ++step)
+    {
+        update_positions(positions, velocities, accelerations, sendcounts[rank], deltatime);
+        compute_accelerations(new_accelerations);
+        update_velocities(velocities, accelerations, new_accelerations, n, deltatime);
+        double* tmp = accelerations;
+        accelerations = new_accelerations;
+        new_accelerations = tmp;
+    }
     char buffer[100];
     sprintf(buffer, "particles-%d.out", rank);
     FILE* out = fopen(buffer, "w");
@@ -126,6 +159,7 @@ int main(int argc, char * argv[])
     free(accelerations);
     free(sendcounts);
     free(displs);
+    free(new_accelerations);
     MPI_Finalize();
     return 0;
 }
