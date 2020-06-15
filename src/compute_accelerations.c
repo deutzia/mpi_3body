@@ -135,6 +135,7 @@ void compute(double** b, double** res,
 void compute_accelerations(int rank, int world_size, int* sendcounts, int bsize,
         double* positions, double** b, double** res, double* accelerations)
 {
+    MPI_Status status;
     memcpy(b[1], positions, sendcounts[rank] * sizeof(double));
     for (int i = 0; i < 4; ++i)
     {
@@ -144,10 +145,10 @@ void compute_accelerations(int rank, int world_size, int* sendcounts, int bsize,
     const int right = nxt(rank, world_size);
     MPI_Sendrecv(b[1], sendcounts[rank], MPI_DOUBLE, right, 0,
                  b[0], sendcounts[left], MPI_DOUBLE, left, 0,
-                 MPI_COMM_WORLD, NULL);
+                 MPI_COMM_WORLD, &status);
     MPI_Sendrecv(b[1], sendcounts[rank], MPI_DOUBLE, left, 0,
                  b[2], sendcounts[right], MPI_DOUBLE, right, 0,
-                 MPI_COMM_WORLD, NULL);
+                 MPI_COMM_WORLD, &status);
 
     // whose buffers I currently have
     int my_buffers[3] = {left, rank, right};
@@ -166,11 +167,11 @@ void compute_accelerations(int rank, int world_size, int* sendcounts, int bsize,
                 positions_mine[i] = nxt(positions_mine[i], world_size);
                 MPI_Sendrecv(b[i], bsize, MPI_DOUBLE, right,0,
                              b[3], bsize, MPI_DOUBLE, left, 0,
-                             MPI_COMM_WORLD, NULL);
+                             MPI_COMM_WORLD, &status);
                 swap(&b[i], &b[3]);
                 MPI_Sendrecv(res[i], bsize, MPI_DOUBLE, right, 0,
                              res[3], bsize, MPI_DOUBLE, left, 0,
-                             MPI_COMM_WORLD, NULL);
+                             MPI_COMM_WORLD, &status);
                 swap(&res[i], &res[3]);
             }
             else
@@ -204,11 +205,11 @@ void compute_accelerations(int rank, int world_size, int* sendcounts, int bsize,
         positions_mine[i] = nxt(positions_mine[i], world_size);
         MPI_Sendrecv(b[i], bsize, MPI_DOUBLE, right,0,
                      b[3], bsize, MPI_DOUBLE, left, 0,
-                     MPI_COMM_WORLD, NULL);
+                     MPI_COMM_WORLD, &status);
         swap(&b[i], &b[3]);
         MPI_Sendrecv(res[i], bsize, MPI_DOUBLE, right, 0,
                      res[3], bsize, MPI_DOUBLE, left, 0,
-                     MPI_COMM_WORLD, NULL);
+                     MPI_COMM_WORLD, &status);
         swap(&res[i], &res[3]);
 
         if ((rank / (world_size / 3)) == 0)
@@ -223,10 +224,10 @@ void compute_accelerations(int rank, int world_size, int* sendcounts, int bsize,
     {
         MPI_Sendrecv(b[i], bsize, MPI_DOUBLE, my_buffers[i], 0,
                      b[3], bsize, MPI_DOUBLE, positions_mine[i], 0,
-                     MPI_COMM_WORLD, NULL);
+                     MPI_COMM_WORLD, &status);
         MPI_Sendrecv(res[i], bsize, MPI_DOUBLE, my_buffers[i], 0,
                      res[3], bsize, MPI_DOUBLE, positions_mine[i], 0,
-                     MPI_COMM_WORLD, NULL);
+                     MPI_COMM_WORLD, &status);
         swap(&res[i], &res[3]);
         swap(&b[i], &b[3]);
     }
