@@ -151,6 +151,35 @@ int main(int argc, char * argv[])
         compute_accelerations(rank, world_size, sendcounts, max_n,
                 positions, b, res, new_accelerations);
         update_velocities(velocities, accelerations, new_accelerations, sendcounts[rank], deltatime);
+        if (verbose)
+        {
+            MPI_Gatherv(positions, sendcounts[rank], MPI_DOUBLE,
+                    positions0, sendcounts, displs, MPI_DOUBLE,
+                    0, MPI_COMM_WORLD);
+            MPI_Gatherv(velocities, sendcounts[rank], MPI_DOUBLE,
+                    velocities0, sendcounts, displs, MPI_DOUBLE,
+                    0, MPI_COMM_WORLD);
+            if (rank == 0)
+            {
+                char buffer[100];
+                sprintf(buffer, "particles_out_%d.txt", step);
+                FILE* file = fopen(buffer, "w");
+                if (file == NULL)
+                {
+                    fprintf(stderr, "Error opening the file to save particles (%d, %s)\n",
+                            errno, strerror(errno));
+                    return 1;
+                }
+                for (int i = 0; i < n; ++i)
+                {
+                    fprintf(file, "%.16lf %.16lf %.16lf %.16lf %.16lf %.16lf\n",
+                                    positions0[3 * i], positions0[3 * i + 1],
+                                    positions0[3 * i + 2], velocities0[3 * i],
+                                    velocities0[3 * i + 1], velocities0[3 * i + 2]);
+                }
+                fclose(file);
+            }
+        }
         swap(&accelerations, &new_accelerations);
     }
 
