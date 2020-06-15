@@ -48,8 +48,6 @@ void compute(double** b, double** res,
     bool f2 = (memcmp(b[i1], b[i2], sizeof(double) * size1) == 0);
     bool f3 = (memcmp(b[i0], b[i2], sizeof(double) * size0) == 0);
 
-    int chamski_counter = 0;
-
     for (it[0] = 0; it[0] < size0; it[0] += 3)
     {
         for (it[1] = 0; it[1] < size1; it[1] += 3)
@@ -123,7 +121,6 @@ void compute(double** b, double** res,
                         r2 = distance(b[p2][it[particle2]], b[p2][it[particle2] + 1], b[p2][it[particle2] + 2],
                                 nval0, nval1, nval2);
                         res[p0][it[particle0] + dim] -= 2 * (tmp1 - compute_vijk(r0, r1, r2));
-                        chamski_counter++;
                     }
 
                 }
@@ -179,17 +176,12 @@ void compute_accelerations(int rank, int world_size, int* sendcounts, int bsize,
                 compute(b, res, 1, 1, 1, sendcounts[my_buffers[1]], sendcounts[my_buffers[1]], sendcounts[my_buffers[1]]);
                 compute(b, res, 1, 1, 2, sendcounts[my_buffers[1]], sendcounts[my_buffers[1]], sendcounts[my_buffers[2]]);
                 compute(b, res, 0, 0, 2, sendcounts[my_buffers[0]], sendcounts[my_buffers[0]], sendcounts[my_buffers[2]]);
-//                compute(b[1], b[1], b[1])
-//                compute(b[1], b[1], b[2])
-//                compute(b[0], b[0], b[2])
             }
             if (s == world_size - 3)
             {
                 compute(b, res, 0, 1, 1, sendcounts[my_buffers[0]], sendcounts[my_buffers[1]], sendcounts[my_buffers[1]]);
-//                compute(b[0], b[1], b[1]);
             }
             compute(b, res, 0, 1, 2, sendcounts[my_buffers[0]], sendcounts[my_buffers[1]], sendcounts[my_buffers[2]]);
-//            compute(b[0], b[1], b[2]);
         }
         i = (i + 1) % 3;
     }
@@ -215,21 +207,16 @@ void compute_accelerations(int rank, int world_size, int* sendcounts, int bsize,
         if ((rank / (world_size / 3)) == 0)
         {
             compute(b, res, 0, 1, 2, sendcounts[my_buffers[0]], sendcounts[my_buffers[1]], sendcounts[my_buffers[2]]);
-//            compute(b[0], b[1], b[2]);
         }
     }
 
     // Send particles in each buffer back to the owner processor
     for (int i = 0; i < 3; ++i)
     {
-        MPI_Sendrecv(b[i], bsize, MPI_DOUBLE, my_buffers[i], 0,
-                     b[3], bsize, MPI_DOUBLE, positions_mine[i], 0,
-                     MPI_COMM_WORLD, &status);
         MPI_Sendrecv(res[i], bsize, MPI_DOUBLE, my_buffers[i], 0,
                      res[3], bsize, MPI_DOUBLE, positions_mine[i], 0,
                      MPI_COMM_WORLD, &status);
         swap(&res[i], &res[3]);
-        swap(&b[i], &b[3]);
     }
 
     // Sum the forces over all 3 copies
