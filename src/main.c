@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "common.h"
+#include "compute_accelerations.h"
 
 #define SIZE 100
 bool verbose;
@@ -31,10 +32,6 @@ void update_velocities(double* velocities, double* old_accelerations, double* ne
     }
 }
 
-void compute_accelerations(double* accelerations)
-{
-}
-
 int main(int argc, char * argv[])
 {
     if (argc < 5 || argc > 6)
@@ -45,7 +42,7 @@ int main(int argc, char * argv[])
     if (argc == 6)
     {
         // I assume -v can only be passed as the last argument
-        if (argv[5] == "-v")
+        if (strcmp(argv[5], "-v") == 0)
             verbose = true;
         else
         {
@@ -99,7 +96,6 @@ int main(int argc, char * argv[])
         n = i;
     }
     MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    fprintf(stderr, "n = %d\n", n);
     int* sendcounts = malloc(sizeof(int) * world_size);
     check_mem(sendcounts);
     int* displs = malloc(sizeof(int) * world_size);
@@ -109,11 +105,7 @@ int main(int argc, char * argv[])
         displs[i] = (i * n / world_size) * 3;
         sendcounts[i] = ((i+1) * n / world_size - i * n / world_size) * 3;
     }
-    if (rank == 0)
-    {
-        for (int i = 0; i < world_size; ++i)
-            fprintf(stderr, "%d %d %d\n", i, displs[i], sendcounts[i]);
-    }
+
     positions = malloc(sizeof(double) * sendcounts[rank]);
     check_mem(positions);
     velocities = malloc(sizeof(double) * sendcounts[rank]);
@@ -127,39 +119,79 @@ int main(int argc, char * argv[])
     MPI_Scatterv(velocities0, sendcounts, displs, MPI_DOUBLE,
             velocities, sendcounts[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
-    compute_accelerations(accelerations);
+    int max_n = 0;
+    for (int i = 0; i < world_size; ++i)
+    {
+        if (sendcounts[i] > max_n)
+        {
+            max_n = sendcounts[i];
+        }
+    }
+    double* b[4] = {NULL, NULL, NULL, NULL};
+    for (int i = 0; i < 4; ++i)
+    {
+        b[i] = malloc(sizeof(double) * max_n);
+        check_mem(b[i]);
+    }
+    double* res[4] = {NULL, NULL, NULL, NULL};
+    for (int i = 0; i < 4; ++i)
+    {
+        res[i] = malloc(sizeof(double) * max_n);
+        check_mem(res[i]);
+    }
+
+    memset(accelerations, 0, sizeof(double) * sendcounts[rank]);
+    memset(new_accelerations, 0, sizeof(double) * sendcounts[rank]);
+    compute_accelerations(rank, world_size, sendcounts, max_n,
+            positions, b, res, accelerations);
     for (int step = 1; step <= stepcount; ++step)
     {
         update_positions(positions, velocities, accelerations, sendcounts[rank], deltatime);
-        compute_accelerations(new_accelerations);
-        update_velocities(velocities, accelerations, new_accelerations, n, deltatime);
-        double* tmp = accelerations;
-        accelerations = new_accelerations;
-        new_accelerations = tmp;
+
+        compute_accelerations(rank, world_size, sendcounts, max_n,
+                positions, b, res, new_accelerations);
+        update_velocities(velocities, accelerations, new_accelerations, sendcounts[rank], deltatime);
+        swap(&accelerations, &new_accelerations);
     }
-    char buffer[100];
-    sprintf(buffer, "particles-%d.out", rank);
-    FILE* out = fopen(buffer, "w");
-    for (int i = 0; i < sendcounts[rank] / 3; ++i)
+
+    MPI_Gatherv(positions, sendcounts[rank], MPI_DOUBLE,
+            positions0, sendcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Gatherv(velocities, sendcounts[rank], MPI_DOUBLE,
+            velocities0, sendcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    if (rank == 0)
     {
-        fprintf(out, "%lf %lf %lf %lf %lf %lf\n",
-                        positions[3 * i], positions[3 * i + 1],
-                        positions[3 * i + 2], velocities[3 * i],
-                        velocities[3 * i + 1], velocities[3 * i + 2]);
+        FILE* file = fopen(argv[2], "w");
+        if (file == NULL)
+        {
+            fprintf(stderr, "Error opening the file to save particles (%d, %s)\n",
+                    errno, strerror(errno));
+            return 1;
+        }
+        for (int i = 0; i < n; ++i)
+        {
+            fprintf(file, "%.16lf %.16lf %.16lf %.16lf %.16lf %.16lf\n",
+                            positions0[3 * i], positions0[3 * i + 1],
+                            positions0[3 * i + 2], velocities0[3 * i],
+                            velocities0[3 * i + 1], velocities0[3 * i + 2]);
+        }
+        fclose(file);
     }
-    fclose(out);
 
     if (rank == 0)
     {
         free(positions0);
         free(velocities0);
     }
+    free(sendcounts);
+    free(displs);
     free(positions);
     free(velocities);
     free(accelerations);
-    free(sendcounts);
-    free(displs);
     free(new_accelerations);
+    for (int i = 0; i < 4; ++i)
+    {
+        free(b[i]);
+    }
     MPI_Finalize();
     return 0;
 }

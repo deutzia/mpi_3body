@@ -15,3 +15,9 @@ void check_mem(void* ptr)
     }
 }
 
+void swap(double** a, double** b)
+{
+    double* tmp = *a;
+    *a = *b;
+    *b = tmp;
+}
