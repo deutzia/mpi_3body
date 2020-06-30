@@ -9,7 +9,7 @@
 
 #include <math.h>
 
-const double REPS = 10.0e-10;
+const double REPS = 1e-10;
 const double HEPS = 4.69041575982343e-08;
 
 const int T[3][3] = {{1, 0, 0}, {0, 1, 0}, {0,0, 1}};
@@ -95,6 +95,10 @@ void compute(double** b, double** res,
                     for (int dim = 0; dim < 3; ++dim)
                     {
                         h = b[p0][it[particle0] + dim] * HEPS;
+                        if (fabs(b[p0][it[particle0] + dim]) < REPS)
+                        {
+                            h = REPS * HEPS;
+                        }
                         nval0 = b[p0][it[particle0]] + h * T[dim][0];
                         nval1 = b[p0][it[particle0] + 1] + h * T[dim][1];
                         nval2 = b[p0][it[particle0] + 2] + h * T[dim][2];
@@ -228,6 +232,10 @@ void compute_accelerations(int rank, int world_size, int* sendcounts, int bsize,
     for (int i = 0; i < sendcounts[rank]; ++i)
     {
         double h = HEPS * positions[i];
+        if (fabs(positions[i]) < REPS)
+        {
+            h = REPS * HEPS;
+        }
         volatile double d1 = positions[i] + h;
         volatile double d2 = positions[i] - h;
         accelerations[i] = res[0][i] / (d1 - d2);
